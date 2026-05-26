@@ -34,6 +34,26 @@
             pkgs.clang
             pkgs.alsa-lib
             pkgs.stdenv.cc.cc.lib
+
+            # Tauri 2 — système (WebKit + GTK + libsoup-3)
+            pkgs.webkitgtk_4_1
+            pkgs.gtk3
+            pkgs.libsoup_3
+            pkgs.librsvg
+            pkgs.glib
+            pkgs.cairo
+            pkgs.pango
+            pkgs.gdk-pixbuf
+            pkgs.atk
+            pkgs.harfbuzz
+            pkgs.openssl
+            pkgs.libayatana-appindicator
+            pkgs.dbus
+            pkgs.patchelf
+
+            # Tauri 2 — frontend
+            pkgs.nodejs_20
+            pkgs.pnpm
           ];
 
           env = {
@@ -43,7 +63,26 @@
           };
 
           shellHook = ''
-            export LD_LIBRARY_PATH=${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.alsa-lib}/lib:''${LD_LIBRARY_PATH:-}
+            export LD_LIBRARY_PATH=${pkgs.lib.makeLibraryPath [
+              pkgs.stdenv.cc.cc.lib
+              pkgs.alsa-lib
+              pkgs.webkitgtk_4_1
+              pkgs.gtk3
+              pkgs.libsoup_3
+              pkgs.glib
+              pkgs.cairo
+              pkgs.pango
+              pkgs.gdk-pixbuf
+              pkgs.atk
+              pkgs.harfbuzz
+              pkgs.librsvg
+              pkgs.openssl
+              pkgs.libayatana-appindicator
+              pkgs.dbus
+            ]}:''${LD_LIBRARY_PATH:-}
+
+            # GTK : ressources (icônes, schémas) pour que la fenêtre WebKit s'affiche correctement
+            export XDG_DATA_DIRS=${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}:${pkgs.glib}/share/gsettings-schemas/${pkgs.glib.name}:''${XDG_DATA_DIRS:-}
           '';
         };
 

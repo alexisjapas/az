@@ -1,0 +1,9 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capacités par défaut pour la fenêtre principale d'AZ",
+  "windows": ["main"],
+  "permissions": [
+    "core:default"
+  ]
+}

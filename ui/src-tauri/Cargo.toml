@@ -1,0 +1,29 @@
+[package]
+name = "az-ui"
+version = "0.1.0"
+edition = "2024"
+description = "UI Tauri pour AZ — assistant local-first"
+default-run = "az-ui"
+
+[lib]
+name = "az_ui_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+az = { path = "../.." }
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+rand = "0.8"
+time = { version = "0.3", features = ["formatting"] }
+uuid = { version = "1", features = ["v4"] }
+rusqlite = { version = "0.32", features = ["bundled-sqlcipher-vendored-openssl"] }
+
+[features]
+# disable custom protocol for dev mode
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

@@ -11,7 +11,7 @@ Le manifeste vision est dans `README.md`. Ce fichier est ton aide-mémoire pour 
 | 1 — Fondations | ✅ | L0 SQLite chiffré SQLCipher, auth Argon2id + mot de passe, captures voix (whisper.cpp via STT) + texte (REPL `chat`), `vacuum`, `backup`/`restore`, `rekey` |
 | 2 — Conversation | ✅ | LLM Ollama, L0→L1 segmentation, mode session privé/connecté, filtre `sensitivity` côté SQL pour ce qui alimente le LLM |
 | 3 — Faits typés | 🟡 | L2 (faits versionnés, validation REPL `y/n/e/s/q` avec `$EDITOR`), L3 (liens + pages + règle `recipe-to-shopping`), recherche sémantique (embeddings Ollama + cosine linéaire). **Manque** : L3 richer (plus de règles, navigation), index vectoriel quand >10K vecteurs |
-| 4 — Multi-appareil & extensibilité | ❌ | Rien : pas de UI Tauri, pas de mobile, pas de sync, pas de TTS, pas de plugins |
+| 4 — Multi-appareil & extensibilité | 🟢 | **MVP UI + pipeline LLM** (CH10–CH15) : Tauri+Solid, auth UI, mode session, 6 vues, 27 commandes Tauri. La validation L2 remplace `facts review` REPL. **CH15** : boutons UI pour segmenter (L0→L1), extraire faits (L1→L2 drafts), recalculer embeddings — pipeline complet depuis l'interface. **Manque** : voix dans l'UI, TTS, sync, plugins, L3 enrichi, maintenance UI (backup/rekey/vacuum), export |
 
 73 tests unitaires, clippy `--all-targets -D warnings` clean. Schéma DB version 5.
 
@@ -34,6 +34,32 @@ bin/{az,chat,query,segment,         # 12 binaires
      facts,embed,export,links,
      backup,rekey,vacuum,mic-check}
 ```
+
+## UI Tauri (workspace Cargo, dans `ui/`)
+
+```
+ui/
+├── package.json / vite.config.ts / tsconfig.json / index.html
+├── src/                             # frontend SolidJS + TS
+│   ├── index.tsx                    # render <App />
+│   ├── App.tsx                      # gate auth + shell sidebar + routing local
+│   ├── Login.tsx                    # création OU déverrouillage selon salt
+│   ├── auth.ts                      # wrappers invoke pour auth
+│   ├── api.ts                       # wrappers invoke typés (toutes commandes)
+│   ├── views/{Dashboard,Capture,Captures,Facts,Review,Search}.tsx
+│   └── styles.css
+└── src-tauri/                       # backend Tauri 2 (crate az-ui)
+    ├── Cargo.toml                   # dépend de `az` en path = "../.."
+    ├── build.rs                     # tauri_build::build()
+    ├── tauri.conf.json              # identifier dev.az.app, fenêtre "main", devUrl :1420
+    ├── capabilities/default.json    # core:default sur la fenêtre "main"
+    ├── icons/icon.png               # 512x512 RGBA placeholder
+    └── src/{main.rs,lib.rs}         # AppState { db_path, key, mode } + 24 commandes
+```
+
+`AppState` (dans `lib.rs`) garde la clé `Mutex<Option<[u8;32]>>` + le `SessionMode` global. Chaque commande qui touche la DB ouvre sa propre connexion via les stores. La conversion des noms d'arguments Tauri est camelCase côté JS → snake_case côté Rust (ex: `sessionId` → `session_id`).
+
+Le `Cargo.toml` racine est un workspace (`members = ["ui/src-tauri"]`) **et** un package `az` simultanément. Tauri 2.11 / wry 0.55 / Solid 1.9 / Vite 5.
 
 ## Conventions techniques
 
@@ -62,12 +88,20 @@ bin/{az,chat,query,segment,         # 12 binaires
 ## Build / test / commandes utiles
 
 ```bash
-# Toujours dans nix develop (sinon link errors C++/alsa)
+# Toujours dans nix develop (sinon link errors C++/alsa + WebKit)
 nix develop
 
+# Backend Rust
 cargo build --bins
 cargo test --lib                           # 73 passed actuellement
 cargo clippy --all-targets -- -D warnings  # doit être clean
+
+# UI Tauri (depuis ui/)
+cd ui
+pnpm install                               # une fois
+pnpm tauri dev                             # lance Vite :1420 + fenêtre Tauri
+pnpm build                                 # frontend uniquement -> dist/
+pnpm tauri build                           # bundle release
 
 # Plan de test fonctionnel complet :
 # voir ~/.claude/plans/impl-mente-une-solution-de-calm-dolphin.md
@@ -83,6 +117,10 @@ cargo clippy --all-targets -- -D warnings  # doit être clean
 - **Migration plain → chiffré** : non gérée. Si une DB plain pré-existe, la supprimer (`rm data/l0.sqlite*`) avant la première run chiffrée.
 - **Backup `VACUUM INTO`** sur SQLCipher préserve le chiffrement (même clé). Le fichier `.salt` doit être copié manuellement à côté (fait automatiquement par `backup create`).
 - **L1 sensitivity** : aujourd'hui héritée par OR des sources. Si tout est halluciné par le LLM, défaut conservateur = `true`.
+- **Tauri 2 + `frontendDist`** : la macro `generate_context!` valide à la compilation que `ui/dist/` existe et que `icons/icon.png` est en RGBA. Faire un `pnpm build` une fois après clone (ou utiliser directement `pnpm tauri dev` qui s'en charge).
+- **Webkit2gtk dans nix** : le flake exporte `LD_LIBRARY_PATH` + `XDG_DATA_DIRS` ; sortir du `nix develop` casse aussi la fenêtre Tauri en plus de l'audio.
+- **UI default DB path** : la résolution par défaut côté UI est `$HOME/.local/share/az/l0.sqlite` (XDG), **pas** `data/l0.sqlite` relatif au CWD. Sinon le binaire Tauri, lancé avec CWD = `ui/`, créerait la DB dans `ui/data/` et le watcher Vite déclencherait un full-reload à chaque écriture WAL. **Pour partager la base avec le CLI**, exporter `AZ_L0_PATH=$HOME/Dev/az/data/l0.sqlite` avant `pnpm tauri dev`.
+- **Vite ignored** : `vite.config.ts` exclut `*.sqlite`, `*.sqlite-*`, `*.salt`, `data/`, `backups/`, `exports/` pour la même raison.
 
 ## Workflow de collaboration
 
@@ -93,7 +131,7 @@ L'utilisateur préfère :
 4. Quand un point est ambigu : 2-4 options claires via `AskUserQuestion`, pas du texte libre.
 5. Décisions de design exposées en table : "j'ai choisi X parce que Y".
 
-Chantiers livrés à date : CH1 (chat REPL), CH2 (Ollama + L1), CH3 (chiffrement), CH4 (sessions+filtre), CH5 (L2), CH6 (embeddings), CH7 (fix L1 sensitivity + exports), CH8 (L3), CH9 (backup + rekey), + fixes (L2 review preserve sources, `vacuum` bin).
+Chantiers livrés à date : CH1 (chat REPL), CH2 (Ollama + L1), CH3 (chiffrement), CH4 (sessions+filtre), CH5 (L2), CH6 (embeddings), CH7 (fix L1 sensitivity + exports), CH8 (L3), CH9 (backup + rekey), CH10 (UI Tauri squelette : workspace + SolidJS + commande `app_info`), CH11 (auth login/create/lock UI : clé chiffrée en mémoire dans `AppState`), CH12 (lecture L0/L1/L2/L3 + FTS + sémantique : mode session toggle, Dashboard/Captures/Faits/Recherche), CH13 (capture texte UI : `session_new` + `transcript_append`, Entrée = envoyer / Maj+Entrée = saut de ligne, toggle sensible), CH14 (validation L2 graphique : vue `Review` itère les drafts, Valider/Éditer/Rejeter/Passer, sources L0 affichées, JSON pretty edit, valide la syntaxe avant écriture), CH15 (pipeline LLM dans l'UI : commandes `segment_run`/`extract_facts`/`embeddings_run`, boutons "Segmenter session" + table des segmentations avec "Extraire faits" dans Captures, carte "Recalculer embeddings" sur Dashboard, idempotent), + fixes (L2 review preserve sources, `vacuum` bin, restart bug fix CWD-relative DB).
 
 ## Pour reprendre
 

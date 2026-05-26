@@ -3,3 +3,9 @@
 /result
 /data
 /models
+
+# Frontend UI (Tauri + Vite)
+/ui/node_modules
+/ui/dist
+/ui/src-tauri/target
+/ui/src-tauri/gen

@@ -83,6 +83,21 @@ impl L0Store {
         Ok(out)
     }
 
+    /// Récupère TOUS les transcripts (toutes sessions, sans filtre). Utilisé
+    /// par les exports — l'appelant décide quoi faire de la sensitivity.
+    pub fn all_entries(&self) -> Result<Vec<L0Entry>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, timestamp, content, source, session_id, sensitivity \
+             FROM transcripts ORDER BY timestamp ASC",
+        )?;
+        let rows = stmt.query_map([], row_to_entry)?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r?);
+        }
+        Ok(out)
+    }
+
     /// Liste (id, content) pour tous les transcripts. Utilisé pour les passes
     /// d'embedding sur l'ensemble du corpus. Pas de filtre — c'est à
     /// l'appelant de décider quoi exclure.

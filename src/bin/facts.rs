@@ -117,7 +117,7 @@ enum ReviewAction {
 }
 
 fn cmd_review() -> anyhow::Result<ExitCode> {
-    let (mut l2, _path) = cli::open_l2()?;
+    let (l2, _path) = cli::open_l2()?;
     let drafts = l2.list_drafts()?;
     if drafts.is_empty() {
         println!("(aucun draft à valider)");
@@ -150,15 +150,9 @@ fn cmd_review() -> anyhow::Result<ExitCode> {
             }
             ReviewAction::Edit => {
                 let new_payload = edit_with_editor(&fact.payload)?;
-                l2.delete(&fact.id, fact.version)?;
                 let now = OffsetDateTime::now_utc().format(&Rfc3339)?;
-                let updated = Fact {
-                    payload: new_payload,
-                    validated_at: Some(now),
-                    ..fact
-                };
-                // Pas de sources rebrancher dans cette V1 — le user ne les édite pas.
-                l2.insert(&updated, &[])?;
+                // Update in-place : payload + validated_at, sources préservées.
+                l2.update_payload_and_validate(&fact.id, fact.version, &new_payload, &now)?;
                 edited += 1;
                 println!("→ édité et validé\n");
             }

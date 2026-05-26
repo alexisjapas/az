@@ -118,6 +118,20 @@ impl L1Store {
         Ok(out)
     }
 
+    /// Récupère TOUTES les segmentations (toutes sessions). Pour exports.
+    pub fn all_segmentations(&self) -> Result<Vec<Segmentation>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, created_at, session_id, model, prompt_version, notes \
+             FROM l1_segmentations ORDER BY created_at ASC",
+        )?;
+        let rows = stmt.query_map([], row_to_segmentation)?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r?);
+        }
+        Ok(out)
+    }
+
     /// Liste (id, content) pour tous les blocs L1. Pas de filtre.
     pub fn all_blocks_with_content(&self) -> Result<Vec<(String, String)>> {
         let mut stmt = self

@@ -95,7 +95,9 @@ pub fn segment_session(
         SegmentError::Parse(format!("{e} :: réponse brute (tronquée): {snippet}"))
     })?;
 
-    let known_ids: HashMap<&str, ()> = transcripts.iter().map(|t| (t.id.as_str(), ())).collect();
+    // Map id → transcript pour : (1) check anti-hallucination, (2) hériter de sensitivity.
+    let tx_by_id: HashMap<&str, &crate::l0::L0Entry> =
+        transcripts.iter().map(|t| (t.id.as_str(), t)).collect();
 
     let segmentation_id = Uuid::new_v4().to_string();
     let created_at = OffsetDateTime::now_utc()
@@ -116,18 +118,32 @@ pub fn segment_session(
 
     for (seq, b) in parsed.blocks.into_iter().enumerate() {
         let block_id = Uuid::new_v4().to_string();
+
+        // Hérite sensitivity = OR(sources.sensitivity).
+        // Si AUCUN ID source n'est connu (LLM a tout halluciné), défaut conservateur = true.
+        let known_sources: Vec<&crate::l0::L0Entry> = b
+            .transcript_ids
+            .iter()
+            .filter_map(|tid| tx_by_id.get(tid.as_str()).copied())
+            .collect();
+        let sensitivity = if known_sources.is_empty() {
+            true
+        } else {
+            known_sources.iter().any(|t| t.sensitivity)
+        };
+
         blocks.push(Block {
             id: block_id.clone(),
             segmentation_id: segmentation_id.clone(),
             seq: seq as i64,
             topic: Some(b.topic),
             content: b.content,
-            sensitivity: true,
+            sensitivity,
         });
         for tid in b.transcript_ids {
             // Défensif : si le LLM hallucine un ID inconnu, on l'écarte plutôt
             // que de faire échouer la FK contrainte côté DB.
-            if known_ids.contains_key(tid.as_str()) {
+            if tx_by_id.contains_key(tid.as_str()) {
                 sources.push((block_id.clone(), tid));
             }
         }
@@ -325,6 +341,69 @@ mod tests {
         let req = mock.last.lock().unwrap().clone().unwrap();
         assert!(req.user.contains("\"sens\""));
         assert!(req.user.contains("50 euros"));
+    }
+
+    #[test]
+    fn block_inherits_sensitivity_from_sources() {
+        let path = tmp("inherit");
+        let l0 = L0Store::open(&path, &db::test_key()).unwrap();
+        seed_mixed(&l0, "S");
+        let mut l1 = L1Store::open(&path, &db::test_key()).unwrap();
+        let mock = MockLlm {
+            last: Mutex::new(None),
+            response: r#"{"blocks":[
+                {"topic":"A","transcript_ids":["safe"],"content":"x"},
+                {"topic":"B","transcript_ids":["sens"],"content":"y"},
+                {"topic":"C","transcript_ids":["safe","sens"],"content":"z"}
+            ]}"#
+            .into(),
+        };
+        let seg = segment_session(&l0, &mut l1, &mock, "m", "S", SessionMode::Private).unwrap();
+        let blocks = l1
+            .blocks(&seg.id, crate::session::ReadFilter::All)
+            .unwrap();
+        assert_eq!(blocks.len(), 3);
+        assert!(
+            !blocks[0].sensitivity,
+            "bloc issu uniquement de 'safe' devrait être non sensible"
+        );
+        assert!(blocks[1].sensitivity, "bloc issu de 'sens' doit rester sensible");
+        assert!(
+            blocks[2].sensitivity,
+            "bloc mixte (safe + sens) doit être sensible (OR conservateur)"
+        );
+    }
+
+    #[test]
+    fn block_with_only_unknown_sources_defaults_sensitive() {
+        let path = tmp("unknown");
+        let l0 = L0Store::open(&path, &db::test_key()).unwrap();
+        // Seed UN transcript safe mais le LLM ne référence que des IDs inconnus.
+        l0.append(&L0Entry {
+            id: "real".into(),
+            timestamp: "2026-01-01T00:00:00Z".into(),
+            content: "x".into(),
+            source: "chat".into(),
+            session_id: "S".into(),
+            sensitivity: false,
+        })
+        .unwrap();
+        let mut l1 = L1Store::open(&path, &db::test_key()).unwrap();
+        let mock = MockLlm {
+            last: Mutex::new(None),
+            response:
+                r#"{"blocks":[{"topic":"X","transcript_ids":["ghost1","ghost2"],"content":"z"}]}"#
+                    .into(),
+        };
+        let seg = segment_session(&l0, &mut l1, &mock, "m", "S", SessionMode::Private).unwrap();
+        let blocks = l1
+            .blocks(&seg.id, crate::session::ReadFilter::All)
+            .unwrap();
+        assert_eq!(blocks.len(), 1);
+        assert!(
+            blocks[0].sensitivity,
+            "défaut conservateur quand toutes les sources sont hallucinées"
+        );
     }
 
     #[test]

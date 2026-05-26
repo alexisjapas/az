@@ -70,6 +70,25 @@ impl L2Store {
         Ok(())
     }
 
+    /// Met à jour le `payload` d'une draft et la valide, en une seule
+    /// transaction et **sans toucher aux `l2_fact_sources`** (les liens vers
+    /// les transcripts d'origine sont préservés). Utilisé par le mode édition
+    /// du REPL `facts review`.
+    pub fn update_payload_and_validate(
+        &self,
+        id: &str,
+        version: i64,
+        new_payload: &str,
+        now: &str,
+    ) -> Result<()> {
+        self.conn.execute(
+            "UPDATE l2_facts SET payload = ?3, validated_at = ?4 \
+             WHERE id = ?1 AND version = ?2",
+            params![id, version, new_payload, now],
+        )?;
+        Ok(())
+    }
+
     /// Supprime un draft (avec ses sources via FK CASCADE).
     pub fn delete(&self, id: &str, version: i64) -> Result<()> {
         self.conn.execute(
@@ -176,6 +195,20 @@ impl L2Store {
             .ok()
             .flatten();
         Ok(v.map(|n| n + 1).unwrap_or(1))
+    }
+
+    /// Toutes les versions de tous les faits, draft+validé. Pour exports.
+    pub fn all_facts(&self) -> Result<Vec<Fact>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, version, fact_type, payload, block_id, sensitivity, created_at, validated_at \
+             FROM l2_facts ORDER BY created_at ASC, id, version",
+        )?;
+        let rows = stmt.query_map([], row_to_fact)?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r?);
+        }
+        Ok(out)
     }
 
     pub fn path(&self) -> &Path {
@@ -295,6 +328,43 @@ mod tests {
         let safe = store.list_current(ReadFilter::ExcludeSensitive).unwrap();
         assert_eq!(safe.len(), 1);
         assert_eq!(safe[0].id, "b");
+    }
+
+    #[test]
+    fn update_payload_preserves_sources_and_validates() {
+        // Seed un transcript pour pouvoir poser une source.
+        let path = tmp("update");
+        let l0 = crate::l0::L0Store::open(&path, &db::test_key()).unwrap();
+        l0.append(&crate::l0::L0Entry {
+            id: "t1".into(),
+            timestamp: "2026-01-01T00:00:00Z".into(),
+            content: "x".into(),
+            source: "chat".into(),
+            session_id: "S".into(),
+            sensitivity: true,
+        })
+        .unwrap();
+        let mut store = L2Store::open(&path, &db::test_key()).unwrap();
+        store
+            .insert(&fact("f", 1, "note", false), &["t1".to_string()])
+            .unwrap();
+
+        store
+            .update_payload_and_validate("f", 1, r#"{"corrigé":true}"#, "2026-05-26T11:00:00Z")
+            .unwrap();
+
+        // Sources préservées
+        let s = store.fact_sources("f", 1).unwrap();
+        assert_eq!(s, vec!["t1".to_string()]);
+
+        // Payload + validated_at à jour
+        let versions = store.get_versions("f").unwrap();
+        assert_eq!(versions.len(), 1);
+        assert_eq!(versions[0].payload, r#"{"corrigé":true}"#);
+        assert_eq!(
+            versions[0].validated_at.as_deref(),
+            Some("2026-05-26T11:00:00Z")
+        );
     }
 
     #[test]

@@ -1,12 +1,15 @@
 pub mod audio;
 pub mod auth;
+pub mod backup;
 pub mod cli;
 pub mod db;
+pub mod derivation;
 pub mod embeddings;
 pub mod extractor;
 pub mod l0;
 pub mod l1;
 pub mod l2;
+pub mod l3;
 pub mod llm;
 pub mod segmenter;
 pub mod session;

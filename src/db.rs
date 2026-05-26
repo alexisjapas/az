@@ -112,7 +112,34 @@ CREATE INDEX IF NOT EXISTS idx_embeddings_type  ON embeddings(target_type);
 CREATE INDEX IF NOT EXISTS idx_embeddings_model ON embeddings(model);
 ";
 
-const TARGET_VERSION: i64 = 4;
+const SCHEMA_V5: &str = "
+CREATE TABLE IF NOT EXISTS l3_links (
+    id          TEXT PRIMARY KEY,
+    src_kind    TEXT NOT NULL,
+    src_id      TEXT NOT NULL,
+    dst_kind    TEXT NOT NULL,
+    dst_id      TEXT NOT NULL,
+    rel_type    TEXT NOT NULL,
+    derived_by  TEXT NOT NULL,
+    metadata    TEXT,
+    created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_l3_src ON l3_links(src_kind, src_id);
+CREATE INDEX IF NOT EXISTS idx_l3_dst ON l3_links(dst_kind, dst_id);
+CREATE INDEX IF NOT EXISTS idx_l3_rel ON l3_links(rel_type);
+
+CREATE TABLE IF NOT EXISTS l3_pages (
+    id           TEXT PRIMARY KEY,
+    title        TEXT NOT NULL,
+    description  TEXT,
+    is_active    INTEGER NOT NULL CHECK (is_active IN (0,1)),
+    created_at   TEXT NOT NULL,
+    archived_at  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_l3_pages_active ON l3_pages(is_active);
+";
+
+const TARGET_VERSION: i64 = 5;
 
 pub fn open(path: &Path, key: &[u8; 32]) -> Result<Connection> {
     if let Some(parent) = path.parent()
@@ -153,6 +180,9 @@ pub fn migrate(conn: &Connection) -> Result<()> {
     if current < 4 {
         conn.execute_batch(SCHEMA_V4)?;
     }
+    if current < 5 {
+        conn.execute_batch(SCHEMA_V5)?;
+    }
     conn.pragma_update(None, "user_version", TARGET_VERSION)?;
     Ok(())
 }
@@ -186,9 +216,9 @@ mod tests {
             .unwrap();
         assert_eq!(v, TARGET_VERSION);
         let cnt: i64 = conn.query_row(
-            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('transcripts','l1_segmentations','l1_blocks','l1_block_sources','l2_facts','l2_fact_sources','embeddings')",
+            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('transcripts','l1_segmentations','l1_blocks','l1_block_sources','l2_facts','l2_fact_sources','embeddings','l3_links','l3_pages')",
             [], |r| r.get(0)).unwrap();
-        assert_eq!(cnt, 7);
+        assert_eq!(cnt, 9);
     }
 
     #[test]

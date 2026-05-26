@@ -328,7 +328,9 @@ fn list_transcripts(
     let store = L0Store::open(&state.db_path, &key).map_err(map_db_err)?;
     let filter = state.current_mode().read_filter();
     let entries = match session_id {
-        Some(sid) => store.list_session(&sid, filter).map_err(|e| e.to_string())?,
+        Some(sid) => store
+            .list_session(&sid, filter)
+            .map_err(|e| e.to_string())?,
         None => store.all_entries().map_err(|e| e.to_string())?,
     };
     let entries = match filter {
@@ -358,14 +360,13 @@ fn list_segmentations(
 }
 
 #[tauri::command]
-fn list_blocks(
-    segmentation_id: String,
-    state: State<'_, AppState>,
-) -> Result<Vec<Block>, String> {
+fn list_blocks(segmentation_id: String, state: State<'_, AppState>) -> Result<Vec<Block>, String> {
     let key = state.require_key()?;
     let store = L1Store::open(&state.db_path, &key).map_err(map_db_err)?;
     let filter = state.current_mode().read_filter();
-    store.blocks(&segmentation_id, filter).map_err(|e| e.to_string())
+    store
+        .blocks(&segmentation_id, filter)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -385,7 +386,9 @@ fn list_facts(
             .filter(|f| f.validated_at.is_some())
             .collect(),
         (Some(t), false) => store.list_by_type(&t, filter).map_err(|e| e.to_string())?,
-        (None, true) => store.list_validated_current(filter).map_err(|e| e.to_string())?,
+        (None, true) => store
+            .list_validated_current(filter)
+            .map_err(|e| e.to_string())?,
         (None, false) => store.list_current(filter).map_err(|e| e.to_string())?,
     };
     Ok(facts)
@@ -470,11 +473,7 @@ fn fact_sources(
 }
 
 #[tauri::command]
-fn fact_validate(
-    id: String,
-    version: i64,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
+fn fact_validate(id: String, version: i64, state: State<'_, AppState>) -> Result<(), String> {
     let key = state.require_key()?;
     let store = L2Store::open(&state.db_path, &key).map_err(map_db_err)?;
     store
@@ -500,11 +499,7 @@ fn fact_update_and_validate(
 }
 
 #[tauri::command]
-fn fact_reject(
-    id: String,
-    version: i64,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
+fn fact_reject(id: String, version: i64, state: State<'_, AppState>) -> Result<(), String> {
     let key = state.require_key()?;
     let store = L2Store::open(&state.db_path, &key).map_err(map_db_err)?;
     store.delete(&id, version).map_err(|e| e.to_string())
@@ -642,7 +637,9 @@ fn segment_run(
 ) -> Result<SegmentRunResult, String> {
     let key = state.require_key()?;
     let mode = state.current_mode();
-    let model = model.filter(|s| !s.trim().is_empty()).unwrap_or_else(llm_model);
+    let model = model
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(llm_model);
     let l0 = L0Store::open(&state.db_path, &key).map_err(map_db_err)?;
     let mut l1 = L1Store::open(&state.db_path, &key).map_err(map_db_err)?;
     let llm = OllamaClient::from_env();
@@ -671,14 +668,15 @@ fn extract_facts(
 ) -> Result<ExtractFactsResult, String> {
     let key = state.require_key()?;
     let mode = state.current_mode();
-    let model = model.filter(|s| !s.trim().is_empty()).unwrap_or_else(llm_model);
+    let model = model
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(llm_model);
     let l1 = L1Store::open(&state.db_path, &key).map_err(map_db_err)?;
     let mut l2 = L2Store::open(&state.db_path, &key).map_err(map_db_err)?;
     let llm = OllamaClient::from_env();
     let start = std::time::Instant::now();
-    let drafts =
-        extract_from_segmentation(&l1, &mut l2, &llm, &model, &segmentation_id, mode)
-            .map_err(|e| e.to_string())?;
+    let drafts = extract_from_segmentation(&l1, &mut l2, &llm, &model, &segmentation_id, mode)
+        .map_err(|e| e.to_string())?;
     Ok(ExtractFactsResult {
         drafts_count: drafts.len() as u64,
         elapsed_ms: start.elapsed().as_millis(),
@@ -700,9 +698,7 @@ fn embeddings_run(
     let model = model
         .filter(|s| !s.trim().is_empty())
         .unwrap_or_else(embed_model);
-    let targets = targets.unwrap_or_else(|| {
-        vec!["transcripts".to_string(), "blocks".to_string()]
-    });
+    let targets = targets.unwrap_or_else(|| vec!["transcripts".to_string(), "blocks".to_string()]);
     let store = EmbeddingsStore::open(&state.db_path, &key).map_err(map_db_err)?;
     let l0 = L0Store::open(&state.db_path, &key).map_err(map_db_err)?;
     let l1 = L1Store::open(&state.db_path, &key).map_err(map_db_err)?;

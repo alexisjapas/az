@@ -137,7 +137,9 @@ fn main() -> anyhow::Result<()> {
 
     if sample_count.load(Ordering::Relaxed) == 0 {
         println!("\n⚠️  Aucun échantillon reçu — le périphérique ne pousse pas d'audio.");
-        println!("    Causes typiques: micro muet (PulseAudio/PipeWire), permissions, mauvais device par défaut.");
+        println!(
+            "    Causes typiques: micro muet (PulseAudio/PipeWire), permissions, mauvais device par défaut."
+        );
     } else if stale_ticks > 20 {
         println!(
             "\n⚠️  Le flux s'est figé en cours de route (callback cpal qui ne pousse plus de buffers)."

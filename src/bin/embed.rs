@@ -104,8 +104,6 @@ fn main() -> anyhow::Result<ExitCode> {
         }
     }
 
-    println!(
-        "OK: {total_new} embedding(s) ajouté(s), {total_skip} sauté(s) (déjà présents)."
-    );
+    println!("OK: {total_new} embedding(s) ajouté(s), {total_skip} sauté(s) (déjà présents).");
     Ok(ExitCode::SUCCESS)
 }

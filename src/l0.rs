@@ -127,11 +127,7 @@ mod tests {
 
     fn tmp_path(name: &str) -> PathBuf {
         let mut p = std::env::temp_dir();
-        p.push(format!(
-            "az-l0-test-{}-{}.sqlite",
-            std::process::id(),
-            name
-        ));
+        p.push(format!("az-l0-test-{}-{}.sqlite", std::process::id(), name));
         let _ = std::fs::remove_file(&p);
         let _ = std::fs::remove_file(p.with_extension("sqlite-wal"));
         let _ = std::fs::remove_file(p.with_extension("sqlite-shm"));

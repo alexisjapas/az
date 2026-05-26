@@ -326,15 +326,9 @@ mod tests {
     fn list_by_type_filters() {
         let path = tmp("by_type");
         let mut store = L2Store::open(&path, &db::test_key()).unwrap();
-        store
-            .insert(&fact("a", 1, "note", true), &[])
-            .unwrap();
-        store
-            .insert(&fact("b", 1, "event", true), &[])
-            .unwrap();
-        store
-            .insert(&fact("c", 1, "note", true), &[])
-            .unwrap();
+        store.insert(&fact("a", 1, "note", true), &[]).unwrap();
+        store.insert(&fact("b", 1, "event", true), &[]).unwrap();
+        store.insert(&fact("c", 1, "note", true), &[]).unwrap();
         let notes = store.list_by_type("note", ReadFilter::All).unwrap();
         assert_eq!(notes.len(), 2);
         let events = store.list_by_type("event", ReadFilter::All).unwrap();

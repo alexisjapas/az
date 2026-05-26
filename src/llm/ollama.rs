@@ -54,11 +54,11 @@ struct EmbedResponse {
 
 impl EmbeddingsLlm for OllamaClient {
     fn embed(&self, model: &str, text: &str) -> Result<Vec<f32>, LlmError> {
-        let url = format!(
-            "{}/api/embeddings",
-            self.base_url.trim_end_matches('/')
-        );
-        let body = EmbedRequest { model, prompt: text };
+        let url = format!("{}/api/embeddings", self.base_url.trim_end_matches('/'));
+        let body = EmbedRequest {
+            model,
+            prompt: text,
+        };
         let resp = ureq::post(&url)
             .send_json(&body)
             .map_err(|e| LlmError::Http(e.to_string()))?;
@@ -139,8 +139,7 @@ mod tests {
             when.method(POST)
                 .path("/api/generate")
                 .json_body_partial(r#"{"format":"json"}"#);
-            then.status(200)
-                .body(r#"{"response":"{\"k\":1}"}"#);
+            then.status(200).body(r#"{"response":"{\"k\":1}"}"#);
         });
 
         let client = OllamaClient::new(server.base_url());

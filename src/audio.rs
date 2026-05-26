@@ -47,10 +47,8 @@ impl AudioCapture {
                 device.build_input_stream(
                     &config,
                     move |data: &[i16], _: &_| {
-                        let f: Vec<f32> = data
-                            .iter()
-                            .map(|&s| s as f32 / i16::MAX as f32)
-                            .collect();
+                        let f: Vec<f32> =
+                            data.iter().map(|&s| s as f32 / i16::MAX as f32).collect();
                         let mono = to_mono_f32(&f, channels);
                         let _ = tx.try_send(mono);
                     },

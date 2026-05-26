@@ -228,7 +228,8 @@ mod tests {
             ]}"#
             .into(),
         };
-        let seg = segment_session(&l0, &mut l1, &mock, "test-model", "S", SessionMode::Private).unwrap();
+        let seg =
+            segment_session(&l0, &mut l1, &mock, "test-model", "S", SessionMode::Private).unwrap();
 
         // Le request envoyé au LLM doit avoir json_mode=true et temperature basse.
         let req = mock.last.lock().unwrap().clone().unwrap();
@@ -256,7 +257,9 @@ mod tests {
         let mut l1 = L1Store::open(&path, &db::test_key()).unwrap();
         let mock = MockLlm {
             last: Mutex::new(None),
-            response: r#"{"blocks":[{"topic":"X","transcript_ids":["real","ghost"],"content":"x"}]}"#.into(),
+            response:
+                r#"{"blocks":[{"topic":"X","transcript_ids":["real","ghost"],"content":"x"}]}"#
+                    .into(),
         };
         let seg = segment_session(&l0, &mut l1, &mock, "m", "S", SessionMode::Private).unwrap();
         let blocks = l1.blocks(&seg.id, crate::session::ReadFilter::All).unwrap();
@@ -273,7 +276,8 @@ mod tests {
             last: Mutex::new(None),
             response: "{}".into(),
         };
-        let err = segment_session(&l0, &mut l1, &mock, "m", "missing", SessionMode::Private).unwrap_err();
+        let err =
+            segment_session(&l0, &mut l1, &mock, "m", "missing", SessionMode::Private).unwrap_err();
         assert!(matches!(err, SegmentError::EmptySession(_)));
     }
 
@@ -313,8 +317,9 @@ mod tests {
         let mut l1 = L1Store::open(&path, &db::test_key()).unwrap();
         let mock = MockLlm {
             last: Mutex::new(None),
-            response: r#"{"blocks":[{"topic":"X","transcript_ids":["safe","sens"],"content":"x"}]}"#
-                .into(),
+            response:
+                r#"{"blocks":[{"topic":"X","transcript_ids":["safe","sens"],"content":"x"}]}"#
+                    .into(),
         };
         segment_session(&l0, &mut l1, &mock, "m", "S", SessionMode::Private).unwrap();
         let req = mock.last.lock().unwrap().clone().unwrap();

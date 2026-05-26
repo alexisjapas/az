@@ -65,11 +65,19 @@ fn cmd_extract(args: &[String]) -> anyhow::Result<ExitCode> {
             }
             "--model" => {
                 i += 1;
-                model = Some(args.get(i).ok_or_else(|| anyhow::anyhow!("--model attend un nom"))?.clone());
+                model = Some(
+                    args.get(i)
+                        .ok_or_else(|| anyhow::anyhow!("--model attend un nom"))?
+                        .clone(),
+                );
             }
             "--mode" => {
                 i += 1;
-                mode_arg = Some(args.get(i).ok_or_else(|| anyhow::anyhow!("--mode attend private|connected"))?.clone());
+                mode_arg = Some(
+                    args.get(i)
+                        .ok_or_else(|| anyhow::anyhow!("--mode attend private|connected"))?
+                        .clone(),
+                );
             }
             other => anyhow::bail!("argument inconnu: {other}"),
         }
@@ -89,7 +97,12 @@ fn cmd_extract(args: &[String]) -> anyhow::Result<ExitCode> {
     let drafts = extract_from_segmentation(&l1, &mut l2, &llm, &model_name, &seg_id, session_mode)?;
     println!("{} fait(s) en draft", drafts.len());
     for d in &drafts {
-        println!("  [{}] type={} sensitive={}", &d.id[..8], d.fact_type, d.sensitivity);
+        println!(
+            "  [{}] type={} sensitive={}",
+            &d.id[..8],
+            d.fact_type,
+            d.sensitivity
+        );
     }
     println!("\nLance `cargo run --bin facts -- review` pour valider chaque fait.");
     Ok(ExitCode::SUCCESS)
@@ -111,7 +124,9 @@ fn cmd_review() -> anyhow::Result<ExitCode> {
         return Ok(ExitCode::SUCCESS);
     }
     let total = drafts.len();
-    println!("{total} draft(s) à valider — touches : y=valider, n=supprimer, e=éditer, s=passer, q=quitter\n");
+    println!(
+        "{total} draft(s) à valider — touches : y=valider, n=supprimer, e=éditer, s=passer, q=quitter\n"
+    );
 
     let mut validated = 0;
     let mut deleted = 0;
@@ -214,7 +229,11 @@ fn cmd_list(args: &[String]) -> anyhow::Result<ExitCode> {
         match args[i].as_str() {
             "--type" => {
                 i += 1;
-                fact_type = Some(args.get(i).ok_or_else(|| anyhow::anyhow!("--type attend un nom"))?.clone());
+                fact_type = Some(
+                    args.get(i)
+                        .ok_or_else(|| anyhow::anyhow!("--type attend un nom"))?
+                        .clone(),
+                );
             }
             "--drafts" => filter = Some("drafts"),
             "--validated" => filter = Some("validated"),
@@ -225,9 +244,11 @@ fn cmd_list(args: &[String]) -> anyhow::Result<ExitCode> {
 
     let (l2, _path) = cli::open_l2()?;
     let facts = match (fact_type.as_deref(), filter) {
-        (Some(t), Some("drafts")) => {
-            l2.list_drafts()?.into_iter().filter(|f| f.fact_type == t).collect()
-        }
+        (Some(t), Some("drafts")) => l2
+            .list_drafts()?
+            .into_iter()
+            .filter(|f| f.fact_type == t)
+            .collect(),
         (Some(t), _) => l2.list_by_type(t, ReadFilter::All)?,
         (None, Some("drafts")) => l2.list_drafts()?,
         (None, Some("validated")) => l2.list_validated_current(ReadFilter::All)?,
@@ -256,7 +277,9 @@ fn cmd_list(args: &[String]) -> anyhow::Result<ExitCode> {
 }
 
 fn cmd_show(args: &[String]) -> anyhow::Result<ExitCode> {
-    let id = args.first().ok_or_else(|| anyhow::anyhow!("show <fact_id> requis"))?;
+    let id = args
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("show <fact_id> requis"))?;
     let (l2, _path) = cli::open_l2()?;
     let versions = l2.get_versions(id)?;
     if versions.is_empty() {

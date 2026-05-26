@@ -44,11 +44,7 @@ pub fn cosine(a: &[f32], b: &[f32]) -> f32 {
         nb += y * y;
     }
     let denom = na.sqrt() * nb.sqrt();
-    if denom == 0.0 {
-        0.0
-    } else {
-        dot / denom
-    }
+    if denom == 0.0 { 0.0 } else { dot / denom }
 }
 
 #[derive(Debug, Clone)]
@@ -97,7 +93,14 @@ impl EmbeddingsStore {
              VALUES (?1, ?2, ?3, ?4, ?5, ?6) \
              ON CONFLICT(target_type, target_id, model) DO UPDATE SET \
                dim = excluded.dim, vector = excluded.vector, created_at = excluded.created_at",
-            params![target_type, target_id, model, vector.len() as i64, blob, now],
+            params![
+                target_type,
+                target_id,
+                model,
+                vector.len() as i64,
+                blob,
+                now
+            ],
         )?;
         Ok(())
     }
@@ -105,9 +108,9 @@ impl EmbeddingsStore {
     /// IDs déjà embeddés pour un (target_type, model) donné — utilisé pour itérer
     /// idempotemment.
     pub fn existing_ids(&self, target_type: &str, model: &str) -> Result<Vec<String>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT target_id FROM embeddings WHERE target_type = ?1 AND model = ?2",
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT target_id FROM embeddings WHERE target_type = ?1 AND model = ?2")?;
         let rows = stmt.query_map(params![target_type, model], |r| r.get(0))?;
         let mut out = Vec::new();
         for r in rows {
@@ -146,9 +149,9 @@ impl EmbeddingsStore {
                 },
             ),
             other => {
-                return Err(EmbeddingsError::Sqlite(rusqlite::Error::InvalidParameterName(
-                    format!("target_type inconnu: {other}"),
-                )));
+                return Err(EmbeddingsError::Sqlite(
+                    rusqlite::Error::InvalidParameterName(format!("target_type inconnu: {other}")),
+                ));
             }
         };
         let sql = format!(
@@ -228,7 +231,11 @@ mod tests {
 
     fn tmp(name: &str) -> PathBuf {
         let mut p = std::env::temp_dir();
-        p.push(format!("az-emb-test-{}-{}.sqlite", std::process::id(), name));
+        p.push(format!(
+            "az-emb-test-{}-{}.sqlite",
+            std::process::id(),
+            name
+        ));
         let _ = std::fs::remove_file(&p);
         let _ = std::fs::remove_file(p.with_extension("sqlite-wal"));
         let _ = std::fs::remove_file(p.with_extension("sqlite-shm"));
@@ -285,11 +292,23 @@ mod tests {
         seed_transcript(&path, "t2", "beta", false);
         seed_transcript(&path, "t3", "gamma", false);
         let store = EmbeddingsStore::open(&path, &db::test_key()).unwrap();
-        store.upsert(TARGET_TRANSCRIPT, "t1", "m", &[1.0, 0.0, 0.0], "n").unwrap();
-        store.upsert(TARGET_TRANSCRIPT, "t2", "m", &[0.9, 0.1, 0.0], "n").unwrap();
-        store.upsert(TARGET_TRANSCRIPT, "t3", "m", &[0.0, 0.0, 1.0], "n").unwrap();
+        store
+            .upsert(TARGET_TRANSCRIPT, "t1", "m", &[1.0, 0.0, 0.0], "n")
+            .unwrap();
+        store
+            .upsert(TARGET_TRANSCRIPT, "t2", "m", &[0.9, 0.1, 0.0], "n")
+            .unwrap();
+        store
+            .upsert(TARGET_TRANSCRIPT, "t3", "m", &[0.0, 0.0, 1.0], "n")
+            .unwrap();
         let hits = store
-            .search(&[TARGET_TRANSCRIPT], "m", &[1.0, 0.0, 0.0], 3, ReadFilter::All)
+            .search(
+                &[TARGET_TRANSCRIPT],
+                "m",
+                &[1.0, 0.0, 0.0],
+                3,
+                ReadFilter::All,
+            )
             .unwrap();
         assert_eq!(hits.len(), 3);
         assert_eq!(hits[0].target_id, "t1");
@@ -303,15 +322,25 @@ mod tests {
         seed_transcript(&path, "secret", "info sensible", true);
         seed_transcript(&path, "ouvert", "info publique", false);
         let store = EmbeddingsStore::open(&path, &db::test_key()).unwrap();
-        store.upsert(TARGET_TRANSCRIPT, "secret", "m", &[1.0, 0.0], "n").unwrap();
-        store.upsert(TARGET_TRANSCRIPT, "ouvert", "m", &[0.99, 0.01], "n").unwrap();
+        store
+            .upsert(TARGET_TRANSCRIPT, "secret", "m", &[1.0, 0.0], "n")
+            .unwrap();
+        store
+            .upsert(TARGET_TRANSCRIPT, "ouvert", "m", &[0.99, 0.01], "n")
+            .unwrap();
 
         let all = store
             .search(&[TARGET_TRANSCRIPT], "m", &[1.0, 0.0], 5, ReadFilter::All)
             .unwrap();
         assert_eq!(all.len(), 2);
         let safe = store
-            .search(&[TARGET_TRANSCRIPT], "m", &[1.0, 0.0], 5, ReadFilter::ExcludeSensitive)
+            .search(
+                &[TARGET_TRANSCRIPT],
+                "m",
+                &[1.0, 0.0],
+                5,
+                ReadFilter::ExcludeSensitive,
+            )
             .unwrap();
         assert_eq!(safe.len(), 1);
         assert_eq!(safe[0].target_id, "ouvert");
@@ -322,8 +351,12 @@ mod tests {
         let path = tmp("upsert");
         seed_transcript(&path, "t1", "x", false);
         let store = EmbeddingsStore::open(&path, &db::test_key()).unwrap();
-        store.upsert(TARGET_TRANSCRIPT, "t1", "m", &[1.0, 2.0], "n1").unwrap();
-        store.upsert(TARGET_TRANSCRIPT, "t1", "m", &[3.0, 4.0], "n2").unwrap();
+        store
+            .upsert(TARGET_TRANSCRIPT, "t1", "m", &[1.0, 2.0], "n1")
+            .unwrap();
+        store
+            .upsert(TARGET_TRANSCRIPT, "t1", "m", &[3.0, 4.0], "n2")
+            .unwrap();
         assert_eq!(store.count().unwrap(), 1);
         let ids = store.existing_ids(TARGET_TRANSCRIPT, "m").unwrap();
         assert_eq!(ids, vec!["t1".to_string()]);

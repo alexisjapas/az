@@ -40,7 +40,9 @@ fn main() -> Result<()> {
         })?;
     }
 
-    let debug = std::env::var("AZ_DEBUG").ok().is_some_and(|v| v != "0" && !v.is_empty());
+    let debug = std::env::var("AZ_DEBUG")
+        .ok()
+        .is_some_and(|v| v != "0" && !v.is_empty());
     eprintln!(
         "[az] capture démarrée — parlez (Ctrl-C pour arrêter){}",
         if debug { " [debug=on]" } else { "" }
@@ -59,37 +61,39 @@ fn main() -> Result<()> {
                 }
                 let t0 = std::time::Instant::now();
                 match stt.transcribe(&samples) {
-                Ok(t) => {
-                    if debug {
-                        eprintln!(
-                            "[az] whisper OK en {:.2}s, texte=\"{}\"",
-                            t0.elapsed().as_secs_f32(),
-                            t.text
-                        );
-                    }
-                    let text = t.text.trim();
-                    if text.is_empty() {
+                    Ok(t) => {
                         if debug {
-                            eprintln!("[az] (transcription vide — souvent bruit / phrase trop courte)");
+                            eprintln!(
+                                "[az] whisper OK en {:.2}s, texte=\"{}\"",
+                                t0.elapsed().as_secs_f32(),
+                                t.text
+                            );
                         }
-                        continue;
+                        let text = t.text.trim();
+                        if text.is_empty() {
+                            if debug {
+                                eprintln!(
+                                    "[az] (transcription vide — souvent bruit / phrase trop courte)"
+                                );
+                            }
+                            continue;
+                        }
+                        println!("> {text}");
+                        let timestamp = OffsetDateTime::now_utc()
+                            .format(&Rfc3339)
+                            .unwrap_or_else(|_| String::from("?"));
+                        let entry = L0Entry {
+                            id: Uuid::new_v4().to_string(),
+                            timestamp,
+                            content: text.to_string(),
+                            source: "voice".to_string(),
+                            session_id: session_id.clone(),
+                            sensitivity: true,
+                        };
+                        if let Err(e) = store.append(&entry) {
+                            eprintln!("[az] échec écriture L0: {e}");
+                        }
                     }
-                    println!("> {text}");
-                    let timestamp = OffsetDateTime::now_utc()
-                        .format(&Rfc3339)
-                        .unwrap_or_else(|_| String::from("?"));
-                    let entry = L0Entry {
-                        id: Uuid::new_v4().to_string(),
-                        timestamp,
-                        content: text.to_string(),
-                        source: "voice".to_string(),
-                        session_id: session_id.clone(),
-                        sensitivity: true,
-                    };
-                    if let Err(e) = store.append(&entry) {
-                        eprintln!("[az] échec écriture L0: {e}");
-                    }
-                }
                     Err(e) => eprintln!("[az] erreur transcription: {e}"),
                 }
             }

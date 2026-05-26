@@ -221,7 +221,10 @@ mod tests {
         }
         // mauvaise clé → WrongKey
         let err = open(&path, &key_b).unwrap_err();
-        assert!(matches!(err, DbError::WrongKey), "attendu WrongKey, got {err:?}");
+        assert!(
+            matches!(err, DbError::WrongKey),
+            "attendu WrongKey, got {err:?}"
+        );
     }
 
     #[test]

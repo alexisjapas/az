@@ -120,9 +120,9 @@ impl L1Store {
 
     /// Liste (id, content) pour tous les blocs L1. Pas de filtre.
     pub fn all_blocks_with_content(&self) -> Result<Vec<(String, String)>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT id, content FROM l1_blocks ORDER BY segmentation_id, seq",
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, content FROM l1_blocks ORDER BY segmentation_id, seq")?;
         let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
         let mut out = Vec::new();
         for r in rows {
@@ -274,12 +274,8 @@ mod tests {
                 content: "x".into(),
                 sensitivity: true,
             };
-            l1.record(
-                &seg,
-                &[block],
-                &[(format!("b-{i}"), "tx1".to_string())],
-            )
-            .unwrap();
+            l1.record(&seg, &[block], &[(format!("b-{i}"), "tx1".to_string())])
+                .unwrap();
         }
         let segs = l1.list_segmentations("S").unwrap();
         assert_eq!(segs.len(), 2);

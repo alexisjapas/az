@@ -105,7 +105,11 @@ fn cmd_semantic(args: &[String]) -> anyhow::Result<ExitCode> {
                 i += 1;
                 targets = Some(
                     args.get(i)
-                        .ok_or_else(|| anyhow::anyhow!("--targets attend transcripts|blocks|transcripts,blocks"))?
+                        .ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "--targets attend transcripts|blocks|transcripts,blocks"
+                            )
+                        })?
                         .clone(),
                 );
             }

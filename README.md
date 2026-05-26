@@ -143,3 +143,47 @@ Exemples qui orientent la conception ; pas une liste exhaustive.
 - **Phase 2 — Conversation** : intégration LLM modulaire, segmentation versionnée L0 → L1, mode session privée / connectée, filtrage déterministe.
 - **Phase 3 — Faits typés** : extraction L1 → L2 avec validation par fait, premiers types métier, graphe L3, recherche sémantique.
 - **Phase 4 — Multi-appareil & extensibilité** : client mobile léger, sync local, vocal complet, plugins, exports, sauvegarde externe.
+
+## État actuel
+
+| Phase | Statut | Livré |
+|---|---|---|
+| 1 | ✅ | L0 SQLite chiffré (SQLCipher + Argon2id), captures voix (whisper.cpp via STT) + texte (REPL `chat`), `backup`/`restore`/`rekey`/`vacuum` |
+| 2 | ✅ | LLM Ollama, segmentation L0→L1, mode session privée/connectée, filtre `sensitivity` côté SQL avant LLM |
+| 3 | 🟡 | L2 (faits versionnés, REPL `facts review` avec `$EDITOR`), L3 (liens + pages + règle `recipe-to-shopping`), recherche sémantique (embeddings Ollama). Manque : règles de dérivation supplémentaires, index vectoriel pour passage à l'échelle |
+| 4 | ❌ | Non démarré (pas de UI, pas de mobile, pas de sync, pas de TTS, pas de plugins) |
+
+73 tests unitaires, `cargo clippy --all-targets -- -D warnings` clean. Schéma DB version 5.
+
+### Binaires disponibles
+
+| Binaire | Rôle |
+|---|---|
+| `az` | Capture vocale temps réel → L0 |
+| `chat` | REPL textuelle → L0 (commande `/safe` pour `sensitivity=false`) |
+| `query` | Recherche FTS / par session / sémantique |
+| `segment` | L0 → L1 segmentation thématique (Ollama) |
+| `facts` | L1 → L2 extraction + validation REPL |
+| `embed` | Calcule les embeddings (Ollama nomic-embed-text par défaut) |
+| `links` | L3 : pages, liens manuels, application de règles de dérivation |
+| `export` | Dump JSON / Markdown / JSONL (non chiffré) |
+| `backup` | `create` / `restore` / `info` — sauvegarde externe chiffrée |
+| `rekey` | Changement de mot de passe (interactif) |
+| `vacuum` | Compactage de la DB en place |
+| `mic-check` | Diagnostic micro / cpal |
+
+### Démarrage rapide
+
+```bash
+nix develop                                      # devShell avec rustc, cmake, alsa, libstdc++
+ollama pull gemma4:e2b nomic-embed-text          # modèles LLM + embeddings
+cargo build --bins
+
+# première session : crée la DB chiffrée
+AZ_PASSWORD=monmotdepasse cargo run --bin chat
+> J'ai dépensé 50€
+> /safe Il pleut demain
+> /exit
+
+# Voir CLAUDE.md pour le plan de test complet et les conventions.
+```

@@ -319,6 +319,9 @@ mod tests {
         store.archive_page("a", "2026-05-26T11:00:00Z").unwrap();
         let pages = store.list_pages().unwrap();
         assert!(!pages[0].is_active);
-        assert_eq!(pages[0].archived_at.as_deref(), Some("2026-05-26T11:00:00Z"));
+        assert_eq!(
+            pages[0].archived_at.as_deref(),
+            Some("2026-05-26T11:00:00Z")
+        );
     }
 }

@@ -117,7 +117,9 @@ fn cmd_restore(args: &[String]) -> anyhow::Result<ExitCode> {
         src.display(),
         dest.display()
     );
-    eprintln!("[az/backup] le mot de passe de la DB est celui de la sauvegarde, pas votre mot de passe actuel.");
+    eprintln!(
+        "[az/backup] le mot de passe de la DB est celui de la sauvegarde, pas votre mot de passe actuel."
+    );
     Ok(ExitCode::SUCCESS)
 }
 
@@ -141,7 +143,10 @@ fn cmd_info(args: &[String]) -> anyhow::Result<ExitCode> {
     let bytes = fs::read(&path)?;
     let header = &bytes[..bytes.len().min(16)];
     let plain = header == b"SQLite format 3\0";
-    println!("chiffré      : {}", if plain { "NON (en clair)" } else { "oui" });
+    println!(
+        "chiffré      : {}",
+        if plain { "NON (en clair)" } else { "oui" }
+    );
     println!(
         "salt présent : {}",
         if salt.exists() {

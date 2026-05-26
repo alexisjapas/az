@@ -43,9 +43,7 @@ impl DerivationRule for RecipeToShopping {
     }
 
     fn apply(&self, l2: &L2Store, l3: &mut L3Store) -> Result<usize, DerivationError> {
-        let active_page = l3
-            .active_page()?
-            .ok_or(DerivationError::NoActivePage)?;
+        let active_page = l3.active_page()?.ok_or(DerivationError::NoActivePage)?;
 
         let recipes = l2.list_by_type("recipe", ReadFilter::All)?;
         let mut created = 0;
@@ -111,7 +109,11 @@ mod tests {
 
     fn tmp(name: &str) -> PathBuf {
         let mut p = std::env::temp_dir();
-        p.push(format!("az-deriv-test-{}-{}.sqlite", std::process::id(), name));
+        p.push(format!(
+            "az-deriv-test-{}-{}.sqlite",
+            std::process::id(),
+            name
+        ));
         let _ = std::fs::remove_file(&p);
         let _ = std::fs::remove_file(p.with_extension("sqlite-wal"));
         let _ = std::fs::remove_file(p.with_extension("sqlite-shm"));

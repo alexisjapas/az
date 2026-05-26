@@ -359,15 +359,16 @@ mod tests {
             .into(),
         };
         let seg = segment_session(&l0, &mut l1, &mock, "m", "S", SessionMode::Private).unwrap();
-        let blocks = l1
-            .blocks(&seg.id, crate::session::ReadFilter::All)
-            .unwrap();
+        let blocks = l1.blocks(&seg.id, crate::session::ReadFilter::All).unwrap();
         assert_eq!(blocks.len(), 3);
         assert!(
             !blocks[0].sensitivity,
             "bloc issu uniquement de 'safe' devrait être non sensible"
         );
-        assert!(blocks[1].sensitivity, "bloc issu de 'sens' doit rester sensible");
+        assert!(
+            blocks[1].sensitivity,
+            "bloc issu de 'sens' doit rester sensible"
+        );
         assert!(
             blocks[2].sensitivity,
             "bloc mixte (safe + sens) doit être sensible (OR conservateur)"
@@ -396,9 +397,7 @@ mod tests {
                     .into(),
         };
         let seg = segment_session(&l0, &mut l1, &mock, "m", "S", SessionMode::Private).unwrap();
-        let blocks = l1
-            .blocks(&seg.id, crate::session::ReadFilter::All)
-            .unwrap();
+        let blocks = l1.blocks(&seg.id, crate::session::ReadFilter::All).unwrap();
         assert_eq!(blocks.len(), 1);
         assert!(
             blocks[0].sensitivity,

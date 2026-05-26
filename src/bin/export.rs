@@ -268,7 +268,10 @@ fn render_markdown(
     let mut sessions: Vec<_> = by_session.keys().cloned().collect();
     sessions.sort();
 
-    out.push_str(&format!("## L0 — Transcripts ({} entrées)\n\n", transcripts.len()));
+    out.push_str(&format!(
+        "## L0 — Transcripts ({} entrées)\n\n",
+        transcripts.len()
+    ));
     for sid in &sessions {
         let entries = &by_session[sid];
         out.push_str(&format!(

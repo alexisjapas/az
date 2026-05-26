@@ -75,11 +75,19 @@ fn cmd_list(args: &[String]) -> anyhow::Result<ExitCode> {
         match args[i].as_str() {
             "--src" => {
                 i += 1;
-                src = Some(args.get(i).ok_or_else(|| anyhow::anyhow!("--src attend kind:id"))?.clone());
+                src = Some(
+                    args.get(i)
+                        .ok_or_else(|| anyhow::anyhow!("--src attend kind:id"))?
+                        .clone(),
+                );
             }
             "--dst" => {
                 i += 1;
-                dst = Some(args.get(i).ok_or_else(|| anyhow::anyhow!("--dst attend kind:id"))?.clone());
+                dst = Some(
+                    args.get(i)
+                        .ok_or_else(|| anyhow::anyhow!("--dst attend kind:id"))?
+                        .clone(),
+                );
             }
             other => anyhow::bail!("argument inconnu: {other}"),
         }
@@ -128,15 +136,27 @@ fn cmd_add(args: &[String]) -> anyhow::Result<ExitCode> {
         match args[i].as_str() {
             "--src" => {
                 i += 1;
-                src = Some(args.get(i).ok_or_else(|| anyhow::anyhow!("--src attend kind:id"))?.clone());
+                src = Some(
+                    args.get(i)
+                        .ok_or_else(|| anyhow::anyhow!("--src attend kind:id"))?
+                        .clone(),
+                );
             }
             "--dst" => {
                 i += 1;
-                dst = Some(args.get(i).ok_or_else(|| anyhow::anyhow!("--dst attend kind:id"))?.clone());
+                dst = Some(
+                    args.get(i)
+                        .ok_or_else(|| anyhow::anyhow!("--dst attend kind:id"))?
+                        .clone(),
+                );
             }
             "--rel" => {
                 i += 1;
-                rel = Some(args.get(i).ok_or_else(|| anyhow::anyhow!("--rel attend un type"))?.clone());
+                rel = Some(
+                    args.get(i)
+                        .ok_or_else(|| anyhow::anyhow!("--rel attend un type"))?
+                        .clone(),
+                );
             }
             other => anyhow::bail!("argument inconnu: {other}"),
         }
@@ -215,7 +235,11 @@ fn cmd_create_page(args: &[String]) -> anyhow::Result<ExitCode> {
         match args[i].as_str() {
             "--description" => {
                 i += 1;
-                description = Some(args.get(i).ok_or_else(|| anyhow::anyhow!("--description attend une string"))?.clone());
+                description = Some(
+                    args.get(i)
+                        .ok_or_else(|| anyhow::anyhow!("--description attend une string"))?
+                        .clone(),
+                );
             }
             other if title.is_none() => title = Some(other.to_string()),
             other => anyhow::bail!("argument inattendu: {other}"),
@@ -267,7 +291,11 @@ fn cmd_derive(args: &[String]) -> anyhow::Result<ExitCode> {
         match args[i].as_str() {
             "--rule" => {
                 i += 1;
-                rule = Some(args.get(i).ok_or_else(|| anyhow::anyhow!("--rule attend un nom"))?.clone());
+                rule = Some(
+                    args.get(i)
+                        .ok_or_else(|| anyhow::anyhow!("--rule attend un nom"))?
+                        .clone(),
+                );
             }
             other => anyhow::bail!("argument inconnu: {other}"),
         }

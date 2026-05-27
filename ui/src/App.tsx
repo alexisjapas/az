@@ -8,6 +8,7 @@ import {
 } from "solid-js";
 import { api, type AppInfo, type SessionMode } from "./api";
 import { authLock, authStatus } from "./auth";
+import { draftsCount, refreshDraftsCount, resetDraftsCount } from "./store";
 import Login from "./Login";
 import Dashboard from "./views/Dashboard";
 import Capture from "./views/Capture";
@@ -35,10 +36,12 @@ const App: Component = () => {
   const onUnlocked = async () => {
     await refetchStatus();
     await refetchInfo();
+    refreshDraftsCount();
   };
 
   const onLock = async () => {
     await authLock();
+    resetDraftsCount();
     await refetchStatus();
     await refetchInfo();
   };
@@ -76,6 +79,9 @@ const App: Component = () => {
                   onClick={() => setView(v.key)}
                 >
                   {v.label}
+                  <Show when={v.key === "review" && draftsCount() > 0}>
+                    <span class="badge">{draftsCount()}</span>
+                  </Show>
                 </button>
               ))}
             </nav>
@@ -105,7 +111,9 @@ const App: Component = () => {
 
           <main class="main">
             <Show when={view() === "dashboard"}><Dashboard /></Show>
-            <Show when={view() === "capture"}><Capture /></Show>
+            <Show when={view() === "capture"}>
+              <Capture onGoToReview={() => setView("review")} />
+            </Show>
             <Show when={view() === "captures"}><Captures /></Show>
             <Show when={view() === "facts"}><Facts /></Show>
             <Show when={view() === "review"}><Review /></Show>

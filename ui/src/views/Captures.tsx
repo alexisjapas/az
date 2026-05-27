@@ -6,6 +6,7 @@ import {
   type Component,
 } from "solid-js";
 import { api, type SegmentRunResult, type ExtractFactsResult } from "../api";
+import { refreshDraftsCount } from "../store";
 
 const Captures: Component = () => {
   const [sessionFilter, setSessionFilter] = createSignal<string>("");
@@ -36,6 +37,8 @@ const Captures: Component = () => {
         `Segmentation creee : ${r.blocks_count} bloc(s) en ${r.elapsed_ms} ms (modele ${r.model}, mode ${r.mode}).`,
       );
       refetchSegmentations();
+      // CH21 : embeddings en arrière-plan (nouveaux blocs L1).
+      api.embeddingsRun().catch(() => {});
     } catch (e) {
       setErrMsg(String(e));
     } finally {
@@ -52,6 +55,10 @@ const Captures: Component = () => {
       setStatusMsg(
         `Extraction terminee : ${r.drafts_count} draft(s) en ${r.elapsed_ms} ms (modele ${r.model}, mode ${r.mode}). A valider dans "Valider drafts".`,
       );
+      refreshDraftsCount();
+      // CH21 : embeddings en arrière-plan (les nouveaux blocs/transcripts ne
+      // sont indexés que si on les recalcule explicitement).
+      api.embeddingsRun().catch(() => {});
     } catch (e) {
       setErrMsg(String(e));
     } finally {

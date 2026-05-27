@@ -11,7 +11,7 @@ Le manifeste vision est dans `README.md`. Ce fichier est ton aide-mémoire pour 
 | 1 — Fondations | ✅ | L0 SQLite chiffré SQLCipher, auth Argon2id + mot de passe, captures voix (whisper.cpp via STT) + texte (REPL `chat`), `vacuum`, `backup`/`restore`, `rekey` |
 | 2 — Conversation | ✅ | LLM Ollama, L0→L1 segmentation, mode session privé/connecté, filtre `sensitivity` côté SQL pour ce qui alimente le LLM |
 | 3 — Faits typés | 🟡 | L2 (faits versionnés, validation REPL `y/n/e/s/q` avec `$EDITOR`), L3 (liens + pages + règle `recipe-to-shopping`), recherche sémantique (embeddings Ollama + cosine linéaire). **Manque** : L3 richer (plus de règles, navigation), index vectoriel quand >10K vecteurs |
-| 4 — Multi-appareil & extensibilité | 🟢 | **MVP UI + pipeline LLM** (CH10–CH15) : Tauri+Solid, auth UI, mode session, 6 vues, 27 commandes Tauri. La validation L2 remplace `facts review` REPL. **CH15** : boutons UI pour segmenter (L0→L1), extraire faits (L1→L2 drafts), recalculer embeddings — pipeline complet depuis l'interface. **Manque** : voix dans l'UI, TTS, sync, plugins, L3 enrichi, maintenance UI (backup/rekey/vacuum), export |
+| 4 — Multi-appareil & extensibilité | 🟢 | **UI + pipeline LLM + voix** (CH10–CH21) : Tauri+Solid, 30 commandes Tauri, 6 vues. **CH15** : boutons UI pour segmenter (L0→L1), extraire faits (L1→L2 drafts), recalculer embeddings. **CH18** : capture vocale streaming VAD dans Capture (whisper.cpp + cpal), events Tauri `voice/transcript` `voice/level` `voice/error`, jauge RMS live. **CH19** : bouton "Traiter cette session" enchaîne segment + extract + nav auto vers Valider. **CH20** : badge "N drafts" dans la sidebar (store global `ui/src/store.ts`). **CH21** : embeddings_run en background après segment/extract. **Manque** : TTS, sync, plugins, L3 enrichi, maintenance UI (backup/rekey/vacuum), export, validation L2 en lot |
 
 73 tests unitaires, clippy `--all-targets -D warnings` clean. Schéma DB version 5.
 
@@ -131,7 +131,7 @@ L'utilisateur préfère :
 4. Quand un point est ambigu : 2-4 options claires via `AskUserQuestion`, pas du texte libre.
 5. Décisions de design exposées en table : "j'ai choisi X parce que Y".
 
-Chantiers livrés à date : CH1 (chat REPL), CH2 (Ollama + L1), CH3 (chiffrement), CH4 (sessions+filtre), CH5 (L2), CH6 (embeddings), CH7 (fix L1 sensitivity + exports), CH8 (L3), CH9 (backup + rekey), CH10 (UI Tauri squelette : workspace + SolidJS + commande `app_info`), CH11 (auth login/create/lock UI : clé chiffrée en mémoire dans `AppState`), CH12 (lecture L0/L1/L2/L3 + FTS + sémantique : mode session toggle, Dashboard/Captures/Faits/Recherche), CH13 (capture texte UI : `session_new` + `transcript_append`, Entrée = envoyer / Maj+Entrée = saut de ligne, toggle sensible), CH14 (validation L2 graphique : vue `Review` itère les drafts, Valider/Éditer/Rejeter/Passer, sources L0 affichées, JSON pretty edit, valide la syntaxe avant écriture), CH15 (pipeline LLM dans l'UI : commandes `segment_run`/`extract_facts`/`embeddings_run`, boutons "Segmenter session" + table des segmentations avec "Extraire faits" dans Captures, carte "Recalculer embeddings" sur Dashboard, idempotent), + fixes (L2 review preserve sources, `vacuum` bin, restart bug fix CWD-relative DB).
+Chantiers livrés à date : CH1 (chat REPL), CH2 (Ollama + L1), CH3 (chiffrement), CH4 (sessions+filtre), CH5 (L2), CH6 (embeddings), CH7 (fix L1 sensitivity + exports), CH8 (L3), CH9 (backup + rekey), CH10 (UI Tauri squelette : workspace + SolidJS + commande `app_info`), CH11 (auth login/create/lock UI : clé chiffrée en mémoire dans `AppState`), CH12 (lecture L0/L1/L2/L3 + FTS + sémantique : mode session toggle, Dashboard/Captures/Faits/Recherche), CH13 (capture texte UI : `session_new` + `transcript_append`, Entrée = envoyer / Maj+Entrée = saut de ligne, toggle sensible), CH14 (validation L2 graphique : vue `Review` itère les drafts, Valider/Éditer/Rejeter/Passer, sources L0 affichées, JSON pretty edit, valide la syntaxe avant écriture), CH15 (pipeline LLM dans l'UI : commandes `segment_run`/`extract_facts`/`embeddings_run`, boutons "Segmenter session" + table des segmentations avec "Extraire faits" dans Captures, carte "Recalculer embeddings" sur Dashboard, idempotent), CH18 (voix dans l'UI : `audio_check_config`/`audio_start_recording`/`audio_stop_recording` + events `voice/transcript`/`voice/level`/`voice/error`, jauge RMS, `AudioCapture::levels()` ajouté à `src/audio.rs`, worker thread car `cpal::Stream` n'est pas Send), CH19 (continuité Capture→Valider : bouton "Traiter cette session" enchaîne segment + extract + nav auto via prop `onGoToReview`), CH20 (badge sidebar : store global `ui/src/store.ts` avec `draftsCount`/`refreshDraftsCount`/`resetDraftsCount`, pastille à côté de "Valider drafts"), CH21 (embeddings auto en background après segment/extract via `api.embeddingsRun().catch(() => {})`), + fixes (L2 review preserve sources, `vacuum` bin, restart bug fix CWD-relative DB).
 
 ## Pour reprendre
 
@@ -139,7 +139,11 @@ Chantiers livrés à date : CH1 (chat REPL), CH2 (Ollama + L1), CH3 (chiffrement
 2. Lire la dernière conversation OU le plan dans `~/.claude/plans/impl-mente-une-solution-de-calm-dolphin.md`.
 3. `cargo test --lib` pour confirmer le state.
 4. Demander à l'utilisateur ce qu'il veut attaquer ensuite. Si pas d'idée, suggérer dans cet ordre :
-   - **TTS** (boucle le pipeline vocal, ferait écho à STT côté Phase 4)
-   - **UI Tauri** (gros, Phase 4 — auth UI + visualisation L0/L1/L2 + validation REPL graphique)
+   - **CH16 — Maintenance UI** : backup/restore/rekey/vacuum exposés dans l'UI Tauri (petit)
+   - **CH17 — Export UI** : JSON/Markdown/JSONL depuis l'UI (petit)
+   - **TTS** (boucle le pipeline vocal, symétrise STT — moyen)
+   - **Validation L2 en lot** : bouton "Tout valider" pour les drafts triviaux
    - **L3 plus riche** : autres règles de dérivation, navigation par page, FTS sur les liens
+   - **Index vectoriel** (sqlite-vec) quand >10K embeddings
    - **Sync multi-machine** (CRDT ou log d'opérations — gros)
+   - **Plugins/imports** (Obsidian, Apple Notes → L0)

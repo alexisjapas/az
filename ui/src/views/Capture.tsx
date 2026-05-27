@@ -15,8 +15,13 @@ import {
   type VoiceErrorEvent,
   type VoiceLevelEvent,
 } from "../api";
+import { refreshDraftsCount } from "../store";
 
-const Capture: Component = () => {
+type Props = {
+  onGoToReview?: () => void;
+};
+
+const Capture: Component<Props> = (props) => {
   const [sessionId, setSessionId] = createSignal<string>("");
   const [text, setText] = createSignal("");
   const [sensitive, setSensitive] = createSignal(true);
@@ -29,6 +34,12 @@ const Capture: Component = () => {
   const [recording, setRecording] = createSignal(false);
   const [level, setLevel] = createSignal(0);
   const [voiceError, setVoiceError] = createSignal<string | null>(null);
+
+  // État du pipeline "Traiter cette session" (segment → extract → review).
+  type ProcessStep = "idle" | "segmenting" | "extracting" | "done";
+  const [processStep, setProcessStep] = createSignal<ProcessStep>("idle");
+  const [processResult, setProcessResult] = createSignal<string | null>(null);
+  const [processError, setProcessError] = createSignal<string | null>(null);
 
   // Mode session global, juste pour rappel visuel.
   const [info] = createResource(api.appInfo);
@@ -118,6 +129,30 @@ const Capture: Component = () => {
     }
   };
 
+  const processSession = async () => {
+    if (!sessionId() || entries().length === 0) return;
+    if (processStep() !== "idle" && processStep() !== "done") return;
+    setProcessError(null);
+    setProcessResult(null);
+    try {
+      setProcessStep("segmenting");
+      const seg = await api.segmentRun(sessionId());
+      setProcessStep("extracting");
+      const ext = await api.extractFacts(seg.segmentation_id);
+      setProcessStep("done");
+      setProcessResult(
+        `${seg.blocks_count} bloc(s) segmenté(s), ${ext.drafts_count} draft(s) extrait(s).`,
+      );
+      refreshDraftsCount();
+      // CH21 : embeddings en arrière-plan, sans bloquer la navigation.
+      api.embeddingsRun().catch(() => {});
+      props.onGoToReview?.();
+    } catch (err) {
+      setProcessStep("idle");
+      setProcessError(typeof err === "string" ? err : String(err));
+    }
+  };
+
   const stopVoice = async () => {
     if (!recording()) return;
     try {
@@ -160,6 +195,41 @@ const Capture: Component = () => {
               à la lecture par le LLM.
             </p>
           )}
+        </Show>
+      </section>
+
+      <section class="card">
+        <div class="row between wrap gap-sm">
+          <div>
+            <h3 class="muted small" style="margin:0">Pipeline L0 → L2</h3>
+            <p class="muted small hint" style="margin:0.25rem 0 0">
+              Segmente cette session, extrait les drafts L2, puis ouvre la vue
+              Valider. Les embeddings sont recalculés en tâche de fond.
+            </p>
+          </div>
+          <button
+            type="button"
+            class="primary"
+            onClick={processSession}
+            disabled={
+              !sessionId() ||
+              entries().length === 0 ||
+              recording() ||
+              (processStep() !== "idle" && processStep() !== "done")
+            }
+          >
+            {processStep() === "segmenting"
+              ? "Segmentation…"
+              : processStep() === "extracting"
+                ? "Extraction…"
+                : "Traiter cette session"}
+          </button>
+        </div>
+        <Show when={processResult()}>
+          {(msg) => <p class="muted small hint">{msg()}</p>}
+        </Show>
+        <Show when={processError()}>
+          {(msg) => <p class="error">{msg()}</p>}
         </Show>
       </section>
 

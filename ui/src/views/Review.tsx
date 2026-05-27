@@ -7,6 +7,7 @@ import {
   type Component,
 } from "solid-js";
 import { api, type Fact, type L0Entry } from "../api";
+import { refreshDraftsCount } from "../store";
 
 function prettyJson(s: string): string {
   try {
@@ -67,6 +68,7 @@ const Review: Component = () => {
         setSummaryCounts({ ...c, [label]: c[label] + 1 });
         advance();
       });
+      refreshDraftsCount();
     } catch (err) {
       setError(typeof err === "string" ? err : String(err));
     } finally {
@@ -108,6 +110,7 @@ const Review: Component = () => {
     setEditing(false);
     setError(null);
     await refetchDrafts();
+    refreshDraftsCount();
   };
 
   return (

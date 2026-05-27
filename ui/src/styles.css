@@ -233,3 +233,19 @@ table.rows td.content { max-width: 0; word-break: break-word; }
 .hit:last-child { border-bottom: 0; }
 .hit .content { margin-top: 0.2rem; }
 .card.fact pre { margin-top: 0.5rem; }
+
+/* --- Jauge RMS pour capture vocale --- */
+.rms-bar {
+  height: 8px;
+  margin-top: 0.75rem;
+  background: rgba(127, 127, 127, 0.12);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.rms-bar span {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, var(--accent), #f59e0b);
+  transition: width 60ms linear;
+}

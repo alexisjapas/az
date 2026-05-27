@@ -2,10 +2,19 @@ import {
   createResource,
   createSignal,
   For,
+  onCleanup,
+  onMount,
   Show,
   type Component,
 } from "solid-js";
-import { api, type L0Entry } from "../api";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import {
+  api,
+  type AudioConfig,
+  type L0Entry,
+  type VoiceErrorEvent,
+  type VoiceLevelEvent,
+} from "../api";
 
 const Capture: Component = () => {
   const [sessionId, setSessionId] = createSignal<string>("");
@@ -14,6 +23,12 @@ const Capture: Component = () => {
   const [entries, setEntries] = createSignal<L0Entry[]>([]);
   const [error, setError] = createSignal<string | null>(null);
   const [busy, setBusy] = createSignal(false);
+
+  // État spécifique à la capture vocale.
+  const [audioCfg, setAudioCfg] = createSignal<AudioConfig | null>(null);
+  const [recording, setRecording] = createSignal(false);
+  const [level, setLevel] = createSignal(0);
+  const [voiceError, setVoiceError] = createSignal<string | null>(null);
 
   // Mode session global, juste pour rappel visuel.
   const [info] = createResource(api.appInfo);
@@ -28,11 +43,48 @@ const Capture: Component = () => {
   ensureSession();
 
   const newSession = async () => {
+    if (recording()) {
+      // Évite de scinder un enregistrement entre deux sessions sans s'en
+      // rendre compte. L'utilisateur arrête lui-même puis recommence.
+      setError("arrête d'abord l'enregistrement vocal");
+      return;
+    }
     const id = await api.sessionNew();
     setSessionId(id);
     setEntries([]);
     setError(null);
+    setVoiceError(null);
   };
+
+  // Abonnements aux événements Tauri. Une seule fois au mount, sans gating sur
+  // `recording` : le backend n'émet rien quand aucune capture n'est active.
+  let unlistens: UnlistenFn[] = [];
+  onMount(async () => {
+    try {
+      const cfg = await api.audioCheckConfig();
+      setAudioCfg(cfg);
+    } catch (e) {
+      setVoiceError(typeof e === "string" ? e : String(e));
+    }
+    unlistens = await Promise.all([
+      listen<L0Entry>("voice/transcript", (ev) => {
+        setEntries([ev.payload, ...entries()]);
+      }),
+      listen<VoiceLevelEvent>("voice/level", (ev) => {
+        setLevel(ev.payload.rms);
+      }),
+      listen<VoiceErrorEvent>("voice/error", (ev) => {
+        setVoiceError(ev.payload.message);
+      }),
+    ]);
+  });
+
+  onCleanup(() => {
+    for (const u of unlistens) u();
+    if (recording()) {
+      api.audioStopRecording().catch(() => {});
+    }
+  });
 
   const submit = async (e?: Event) => {
     e?.preventDefault();
@@ -55,9 +107,36 @@ const Capture: Component = () => {
     }
   };
 
+  const startVoice = async () => {
+    if (!sessionId() || recording()) return;
+    setVoiceError(null);
+    try {
+      await api.audioStartRecording(sessionId(), sensitive());
+      setRecording(true);
+    } catch (err) {
+      setVoiceError(typeof err === "string" ? err : String(err));
+    }
+  };
+
+  const stopVoice = async () => {
+    if (!recording()) return;
+    try {
+      await api.audioStopRecording();
+    } catch (err) {
+      setVoiceError(typeof err === "string" ? err : String(err));
+    } finally {
+      setRecording(false);
+      setLevel(0);
+    }
+  };
+
+  // Le niveau RMS plafonne en pratique vers ~0.2 sur une voix normale.
+  // On amplifie pour avoir une jauge utile à l'œil.
+  const levelPct = () => Math.min(100, Math.round(level() * 400));
+
   return (
     <div class="view">
-      <h2>Capture (L0 texte)</h2>
+      <h2>Capture (L0)</h2>
 
       <section class="card">
         <div class="row between wrap">
@@ -65,7 +144,11 @@ const Capture: Component = () => {
             <div class="muted small">Session courante</div>
             <code>{sessionId() || "…"}</code>
           </div>
-          <button class="small" onClick={newSession} disabled={busy()}>
+          <button
+            class="small"
+            onClick={newSession}
+            disabled={busy() || recording()}
+          >
             Nouvelle session
           </button>
         </div>
@@ -80,9 +163,53 @@ const Capture: Component = () => {
         </Show>
       </section>
 
+      <section class="card">
+        <h3 class="muted small">Voix (whisper.cpp + VAD)</h3>
+        <Show
+          when={audioCfg()?.model_set}
+          fallback={
+            <p class="muted small hint">
+              Modèle whisper non configuré. Définir <code>AZ_WHISPER_MODEL</code>{" "}
+              (chemin vers un fichier <code>ggml-*.bin</code>) avant de lancer
+              l'UI, puis relancer.
+            </p>
+          }
+        >
+          <div class="row between wrap gap-sm">
+            <Show
+              when={recording()}
+              fallback={
+                <button
+                  type="button"
+                  class="primary"
+                  onClick={startVoice}
+                  disabled={!sessionId()}
+                >
+                  Enregistrer
+                </button>
+              }
+            >
+              <button type="button" class="danger" onClick={stopVoice}>
+                Arrêter
+              </button>
+            </Show>
+            <div class="muted small">
+              Langue : <code>{audioCfg()?.language ?? "auto"}</code>
+              {recording() ? " · en écoute…" : ""}
+            </div>
+          </div>
+          <div class="rms-bar" aria-hidden="true">
+            <span style={{ width: `${levelPct()}%` }} />
+          </div>
+        </Show>
+        <Show when={voiceError()}>
+          {(msg) => <p class="error">{msg()}</p>}
+        </Show>
+      </section>
+
       <form class="card" onSubmit={submit}>
         <label class="field">
-          <span>Énoncé</span>
+          <span>Énoncé (texte)</span>
           <textarea
             value={text()}
             onInput={(e) => setText(e.currentTarget.value)}
@@ -114,7 +241,7 @@ const Capture: Component = () => {
             class="primary"
             disabled={busy() || !text().trim() || !sessionId()}
           >
-            {busy() ? "..." : "Enregistrer"}
+            {busy() ? "..." : "Envoyer"}
           </button>
         </div>
         <Show when={error()}>
@@ -131,7 +258,8 @@ const Capture: Component = () => {
             {(e) => (
               <article class="hit">
                 <div class="muted small">
-                  <code>{e.timestamp}</code> ·{" "}
+                  <code>{e.timestamp}</code> · {e.source}
+                  {" · "}
                   {e.sensitivity ? "[s]" : "ouvert"}
                 </div>
                 <div class="content">{e.content}</div>

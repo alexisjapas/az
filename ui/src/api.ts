@@ -126,6 +126,15 @@ export type EmbeddingsRunResult = {
   per_target: EmbedTargetReport[];
 };
 
+export type AudioConfig = {
+  model_set: boolean;
+  model_path: string | null;
+  language: string;
+};
+
+export type VoiceLevelEvent = { rms: number };
+export type VoiceErrorEvent = { message: string };
+
 export const api = {
   appInfo: () => invoke<AppInfo>("app_info"),
 
@@ -181,4 +190,9 @@ export const api = {
       targets: targets ?? null,
       model: model ?? null,
     }),
+
+  audioCheckConfig: () => invoke<AudioConfig>("audio_check_config"),
+  audioStartRecording: (sessionId: string, sensitive: boolean) =>
+    invoke<void>("audio_start_recording", { sessionId, sensitive }),
+  audioStopRecording: () => invoke<void>("audio_stop_recording"),
 };

@@ -8,8 +8,13 @@
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::thread::{self, JoinHandle};
+use std::time::Duration;
 
 use az::auth::{self, KEY_SIZE, SALT_SIZE};
+use az::audio::AudioCapture;
 use az::db;
 use az::embeddings::{EmbeddingsStore, SearchHit, TARGET_BLOCK, TARGET_TRANSCRIPT};
 use az::extractor::extract_from_segmentation;
@@ -21,8 +26,11 @@ use az::llm::EmbeddingsLlm;
 use az::llm::ollama::OllamaClient;
 use az::segmenter::segment_session;
 use az::session::SessionMode;
+use az::stt::SpeechToText;
+use az::stt::whisper::WhisperStt;
+use crossbeam_channel::RecvTimeoutError;
 use serde::Serialize;
-use tauri::{Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 const DEFAULT_EMBED_MODEL_ENV: &str = "AZ_EMBED_MODEL";
 const DEFAULT_EMBED_MODEL: &str = "nomic-embed-text";
@@ -61,11 +69,20 @@ fn llm_model() -> String {
     std::env::var(DEFAULT_LLM_MODEL_ENV).unwrap_or_else(|_| DEFAULT_LLM_MODEL.to_string())
 }
 
+/// Handle vers une session de capture vocale en cours. Le thread worker possède
+/// l'`AudioCapture` (cpal::Stream n'est pas Send sur Linux/ALSA), donc on ne
+/// stocke ici que le drapeau d'arrêt et le JoinHandle.
+struct RecordingHandle {
+    stop_flag: Arc<AtomicBool>,
+    worker: Option<JoinHandle<()>>,
+}
+
 /// État applicatif partagé entre toutes les commandes Tauri.
 struct AppState {
     db_path: PathBuf,
     key: Mutex<Option<[u8; KEY_SIZE]>>,
     mode: Mutex<SessionMode>,
+    recording: Mutex<Option<RecordingHandle>>,
 }
 
 impl AppState {
@@ -74,6 +91,7 @@ impl AppState {
             db_path: default_db_path(),
             key: Mutex::new(None),
             mode: Mutex::new(SessionMode::DEFAULT),
+            recording: Mutex::new(None),
         }
     }
 
@@ -760,6 +778,201 @@ fn embeddings_run(
     })
 }
 
+// ------------------- Capture vocale (STT) -------------------
+
+const ENV_WHISPER_MODEL: &str = "AZ_WHISPER_MODEL";
+const ENV_WHISPER_LANG: &str = "AZ_WHISPER_LANG";
+
+#[derive(Serialize)]
+struct AudioConfig {
+    model_set: bool,
+    model_path: Option<String>,
+    language: String,
+}
+
+#[derive(Clone, Serialize)]
+struct VoiceLevelEvent {
+    rms: f32,
+}
+
+#[derive(Clone, Serialize)]
+struct VoiceErrorEvent {
+    message: String,
+}
+
+/// Renseigne l'UI sur la disponibilité du modèle whisper. Ne charge pas le
+/// modèle (chargement coûteux, fait à `audio_start_recording`).
+#[tauri::command]
+fn audio_check_config() -> AudioConfig {
+    let model_path = std::env::var(ENV_WHISPER_MODEL).ok();
+    let language = std::env::var(ENV_WHISPER_LANG).unwrap_or_else(|_| "auto".to_string());
+    AudioConfig {
+        model_set: model_path.as_ref().is_some_and(|p| !p.trim().is_empty()),
+        model_path,
+        language,
+    }
+}
+
+/// Démarre une capture vocale streaming pour la session donnée. Chaque utterance
+/// détectée par le VAD est transcrite et appended au L0 (source `voice`).
+/// Émet sur le canal d'événements Tauri :
+/// - `voice/transcript` : `L0Entry` à chaque utterance transcrite (texte non vide)
+/// - `voice/level` : niveau RMS f32 par frame de 30 ms (jauge UI)
+/// - `voice/error` : erreur non fatale (échec de transcription d'une utterance)
+#[tauri::command]
+fn audio_start_recording(
+    app: AppHandle,
+    session_id: String,
+    sensitive: bool,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    if session_id.trim().is_empty() {
+        return Err("session_id manquant".into());
+    }
+    let key = state.require_key()?;
+    let model_path = std::env::var(ENV_WHISPER_MODEL)
+        .map_err(|_| format!("variable {ENV_WHISPER_MODEL} non définie"))?;
+    if model_path.trim().is_empty() {
+        return Err(format!("variable {ENV_WHISPER_MODEL} vide"));
+    }
+    let language = std::env::var(ENV_WHISPER_LANG).unwrap_or_else(|_| "auto".to_string());
+
+    {
+        let guard = state.recording.lock().expect("mutex empoisonné");
+        if guard.is_some() {
+            return Err("une capture est déjà en cours".into());
+        }
+    }
+
+    let db_path = state.db_path.clone();
+    let stop_flag = Arc::new(AtomicBool::new(false));
+    let stop_clone = stop_flag.clone();
+
+    let worker = thread::spawn(move || {
+        // Tout ce qui suit est `Send`-libre car exécuté sur ce thread dédié.
+        // En cas d'échec, on émet `voice/error` puis on sort proprement.
+        let mut stt = match WhisperStt::load(&model_path, language.as_str()) {
+            Ok(s) => s,
+            Err(e) => {
+                let _ = app.emit(
+                    "voice/error",
+                    VoiceErrorEvent {
+                        message: format!("chargement whisper: {e}"),
+                    },
+                );
+                return;
+            }
+        };
+        let capture = match AudioCapture::start() {
+            Ok(c) => c,
+            Err(e) => {
+                let _ = app.emit(
+                    "voice/error",
+                    VoiceErrorEvent {
+                        message: format!("capture audio: {e}"),
+                    },
+                );
+                return;
+            }
+        };
+        let store = match L0Store::open(&db_path, &key) {
+            Ok(s) => s,
+            Err(e) => {
+                let _ = app.emit(
+                    "voice/error",
+                    VoiceErrorEvent {
+                        message: format!("ouverture L0: {e}"),
+                    },
+                );
+                return;
+            }
+        };
+
+        let utterances = capture.utterances();
+        let levels = capture.levels();
+
+        while !stop_clone.load(Ordering::Relaxed) {
+            // Drain les niveaux disponibles (jauge UI). Limité par tour pour
+            // garantir qu'on revient écouter les utterances rapidement.
+            for _ in 0..16 {
+                match levels.try_recv() {
+                    Ok(rms) => {
+                        let _ = app.emit("voice/level", VoiceLevelEvent { rms });
+                    }
+                    Err(_) => break,
+                }
+            }
+            // Attente courte d'une utterance pour laisser respirer le CPU.
+            match utterances.recv_timeout(Duration::from_millis(50)) {
+                Ok(samples) => match stt.transcribe(&samples) {
+                    Ok(t) => {
+                        let text = t.text.trim().to_string();
+                        if text.is_empty() {
+                            continue;
+                        }
+                        let timestamp = now_rfc3339();
+                        let entry = L0Entry {
+                            id: uuid::Uuid::new_v4().to_string(),
+                            timestamp,
+                            content: text,
+                            source: "voice".into(),
+                            session_id: session_id.clone(),
+                            sensitivity: sensitive,
+                        };
+                        if let Err(e) = store.append(&entry) {
+                            let _ = app.emit(
+                                "voice/error",
+                                VoiceErrorEvent {
+                                    message: format!("append L0: {e}"),
+                                },
+                            );
+                            continue;
+                        }
+                        let _ = app.emit("voice/transcript", &entry);
+                    }
+                    Err(e) => {
+                        let _ = app.emit(
+                            "voice/error",
+                            VoiceErrorEvent {
+                                message: format!("transcription: {e}"),
+                            },
+                        );
+                    }
+                },
+                Err(RecvTimeoutError::Timeout) => continue,
+                Err(RecvTimeoutError::Disconnected) => break,
+            }
+        }
+        // capture drop ici -> arrêt du cpal::Stream + fin du thread VAD interne.
+        drop(capture);
+        // Signale au front que la dernière jauge doit retomber à 0.
+        let _ = app.emit("voice/level", VoiceLevelEvent { rms: 0.0 });
+    });
+
+    *state.recording.lock().expect("mutex empoisonné") = Some(RecordingHandle {
+        stop_flag,
+        worker: Some(worker),
+    });
+    Ok(())
+}
+
+/// Arrête la capture vocale en cours. Idempotent : ne renvoie pas d'erreur si
+/// aucune capture n'est active.
+#[tauri::command]
+fn audio_stop_recording(state: State<'_, AppState>) -> Result<(), String> {
+    let mut handle = match state.recording.lock().expect("mutex empoisonné").take() {
+        Some(h) => h,
+        None => return Ok(()),
+    };
+    handle.stop_flag.store(true, Ordering::Relaxed);
+    if let Some(worker) = handle.worker.take() {
+        // Le worker sort de sa boucle en au plus ~50ms (recv_timeout). On lui
+        // laisse une marge généreuse pour drop cpal proprement.
+        let _ = worker.join();
+    }
+    Ok(())
+}
+
 // ------------------- Boot -------------------
 
 pub fn run() {
@@ -796,6 +1009,9 @@ pub fn run() {
             segment_run,
             extract_facts,
             embeddings_run,
+            audio_check_config,
+            audio_start_recording,
+            audio_stop_recording,
         ])
         .run(tauri::generate_context!())
         .expect("erreur lors du lancement de l'application Tauri");

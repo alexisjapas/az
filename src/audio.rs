@@ -10,6 +10,7 @@ pub const FRAME_SIZE: usize = TARGET_RATE as usize * FRAME_MS / 1000; // 480
 pub struct AudioCapture {
     _stream: cpal::Stream,
     utterance_rx: Receiver<Vec<f32>>,
+    level_rx: Receiver<f32>,
     sample_rate: u32,
     channels: u16,
 }
@@ -78,6 +79,9 @@ impl AudioCapture {
         stream.play()?;
 
         let (utterance_tx, utterance_rx) = bounded::<Vec<f32>>(8);
+        // Canal séparé pour les niveaux RMS (affichage UI). Borné et best-effort :
+        // un consommateur lent ne doit jamais bloquer le pipeline audio.
+        let (level_tx, level_rx) = bounded::<f32>(16);
         let in_rate = sample_rate;
 
         thread::spawn(move || {
@@ -88,6 +92,9 @@ impl AudioCapture {
                 buf16k.extend_from_slice(&resampled);
                 while buf16k.len() >= FRAME_SIZE {
                     let frame: Vec<f32> = buf16k.drain(..FRAME_SIZE).collect();
+                    let rms =
+                        (frame.iter().map(|&x| x * x).sum::<f32>() / frame.len() as f32).sqrt();
+                    let _ = level_tx.try_send(rms);
                     if let Some(utt) = vad.push_frame(&frame)
                         && utterance_tx.send(utt).is_err()
                     {
@@ -100,6 +107,7 @@ impl AudioCapture {
         Ok(Self {
             _stream: stream,
             utterance_rx,
+            level_rx,
             sample_rate,
             channels,
         })
@@ -107,6 +115,10 @@ impl AudioCapture {
 
     pub fn utterances(&self) -> Receiver<Vec<f32>> {
         self.utterance_rx.clone()
+    }
+
+    pub fn levels(&self) -> Receiver<f32> {
+        self.level_rx.clone()
     }
 
     pub fn input_sample_rate(&self) -> u32 {
